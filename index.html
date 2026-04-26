@@ -322,12 +322,13 @@
           <div style="margin-top:20px;text-align:left">
             <div style="font-size:12px;font-weight:500;color:#aaa;letter-spacing:0.5px;margin-bottom:8px">УВЕДОМЛЯТЬ КАЖДЫЕ</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px" id="freq-btns">
-              ${['10 мин|10','30 мин|30','1 час|60','2 часа|120','4 часа|240','Выкл|off'].map(s => {
+              ${['30 мин|30','1 час|60','2 часа|120','4 часа|240','Выкл|off'].map(s => {
                 const [label, val] = s.split('|');
                 const active = localStorage.getItem('notifyInterval') === val;
                 return `<button
+                  ontouchstart="updateFreqButtons('${val}')"
                   onclick="setNotifyInterval('${val}')"
-                  style="padding:8px 14px;border:none;border-radius:100px;font-size:13px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent;background:${active ? 'var(--accent)' : '#f0f0f0'};color:${active ? '#fff' : '#444'}"
+                  style="padding:9px 16px;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background 0.1s,color 0.1s;background:${active ? 'var(--accent)' : '#f5f5f5'};color:${active ? '#fff' : '#333'}"
                   data-interval="${val}"
                 >${label}</button>`;
               }).join('')}
@@ -687,6 +688,10 @@
     }
 
     async function setNotifyInterval(val) {
+      // Immediate visual feedback before any async work
+      updateFreqButtons(val);
+      localStorage.setItem('notifyInterval', val);
+
       // Turn off
       if (val === 'off') {
         try {
@@ -694,8 +699,6 @@
           const sub = await reg.pushManager.getSubscription();
           if (sub) await sub.unsubscribe();
         } catch (_) {}
-        localStorage.setItem('notifyInterval', 'off');
-        updateFreqButtons('off');
         return;
       }
 
@@ -735,9 +738,6 @@
             interval: parseInt(val),
           }),
         });
-
-        localStorage.setItem('notifyInterval', val);
-        updateFreqButtons(val);
 
       } catch (_) {
         alert('Не удалось подключить уведомления.\nПроверь что приложение добавлено на экран домой.');

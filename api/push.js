@@ -15,25 +15,22 @@ function getLevel(uv) {
   return LEVELS.find(l => uv <= l.max);
 }
 
-// Is current local time between 9:00 and 17:00?
-function isInDaytime(timezone) {
-  try {
-    const now = new Date();
-    const hour = parseInt(
-      now.toLocaleTimeString('en-GB', { timeZone: timezone, hour: '2-digit' }),
-      10
-    );
-    return hour >= 9 && hour < 17;
-  } catch (_) {
-    return true; // fallback: always send
-  }
-}
+// Check if current local time hits a notification slot.
+// Slots are fixed: every `intervalMinutes` starting from 9:00, within 9:00–17:00.
+// Examples (interval 120): 9:00, 11:00, 13:00, 15:00 → 4 notifications/day
+function isNotifySlot(timezone, intervalMinutes) {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-GB', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }); // "HH:MM"
+  const [h, m] = timeStr.split(':').map(Number);
 
-// Has enough time passed since last notification?
-function isIntervalReached(lastSentMs, intervalMinutes) {
-  if (!lastSentMs) return true;
-  const elapsed = Date.now() - Number(lastSentMs);
-  return elapsed >= intervalMinutes * 60 * 1000;
+  if (h < 9 || h >= 17) return false;
+
+  const minutesSince9 = (h - 9) * 60 + m;
+  return minutesSince9 % intervalMinutes === 0;
 }
 
 export default async function handler(req, res) {
@@ -45,23 +42,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const subRaw    = await redis.get('push_subscription');
+    const subRaw   = await redis.get('push_subscription');
     const coordsRaw = await redis.get('push_coords');
     const timezone  = (await redis.get('push_timezone')) || 'UTC';
     const interval  = parseInt(await redis.get('push_interval') || '60', 10);
-    const lastSent  = await redis.get('push_last_sent');
 
     if (!subRaw || !coordsRaw) {
       return res.status(404).json({ error: 'No subscription or coords stored' });
     }
 
-    // TODO: раскомментировать после тестирования
-    // if (!req.query.force && !isInDaytime(timezone)) {
-    //   return res.status(200).json({ ok: true, skipped: true, reason: 'outside daytime' });
-    // }
-    // if (!req.query.force && !isIntervalReached(lastSent, interval)) {
-    //   return res.status(200).json({ ok: true, skipped: true, reason: 'interval not reached' });
-    // }
+    if (!req.query.force && !isNotifySlot(timezone, interval)) {
+      return res.status(200).json({ ok: true, skipped: true, timezone, interval });
+    }
 
     const subscription = typeof subRaw === 'string' ? JSON.parse(subRaw) : subRaw;
     const coords       = typeof coordsRaw === 'string' ? JSON.parse(coordsRaw) : coordsRaw;
@@ -83,10 +75,7 @@ export default async function handler(req, res) {
     );
     await webpush.sendNotification(subscription, JSON.stringify({ title: 'UV Guard', body }));
 
-    // Save last sent timestamp
-    await redis.set('push_last_sent', Date.now().toString());
-
-    res.status(200).json({ ok: true, uv, body });
+    res.status(200).json({ ok: true, uv, body, timezone, interval });
 
   } catch (err) {
     console.error('Push error:', err.message);
