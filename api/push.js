@@ -4,11 +4,11 @@ import webpush from 'web-push';
 const redis = Redis.fromEnv();
 
 const LEVELS = [
-  { max: 2,        advice: 'SPF не нужен 😎',           spf: false },
-  { max: 5,        advice: 'SPF 15–30 по желанию',      spf: false },
-  { max: 7,        advice: 'Намажь SPF 30+ ☀️',         spf: true  },
-  { max: 10,       advice: 'Обязательно SPF 50+ ☀️',    spf: true  },
-  { max: Infinity, advice: 'SPF 50+, меньше солнца ☀️', spf: true  },
+  { max: 2,        advice: 'Живи. Сегодня солнце тебя не хочет.',                             spf: false },
+  { max: 5,        advice: 'Рак кожи с первого раза не бывает. Продолжай в том же духе.',   spf: false },
+  { max: 7,        advice: 'Намажься. Или не надо, меланома сама себя не вырастит.',         spf: true  },
+  { max: 10,       advice: 'Красивый коричневый цвет. Гроб тоже будет красивый.',            spf: true  },
+  { max: Infinity, advice: 'Это уже не загар. Это заявка на биопсию. Загорай, красавчик.',   spf: true  },
 ];
 
 function getLevel(uv) {
