@@ -55,15 +55,13 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'No subscription or coords stored' });
     }
 
-    // Skip if outside 9:00–17:00 local time (unless forced)
-    if (!req.query.force && !isInDaytime(timezone)) {
-      return res.status(200).json({ ok: true, skipped: true, reason: 'outside daytime' });
-    }
-
-    // Skip if not enough time passed since last notification
-    if (!req.query.force && !isIntervalReached(lastSent, interval)) {
-      return res.status(200).json({ ok: true, skipped: true, reason: 'interval not reached' });
-    }
+    // TODO: раскомментировать после тестирования
+    // if (!req.query.force && !isInDaytime(timezone)) {
+    //   return res.status(200).json({ ok: true, skipped: true, reason: 'outside daytime' });
+    // }
+    // if (!req.query.force && !isIntervalReached(lastSent, interval)) {
+    //   return res.status(200).json({ ok: true, skipped: true, reason: 'interval not reached' });
+    // }
 
     const subscription = typeof subRaw === 'string' ? JSON.parse(subRaw) : subRaw;
     const coords       = typeof coordsRaw === 'string' ? JSON.parse(coordsRaw) : coordsRaw;
