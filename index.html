@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>UV Guard</title>
 
   <!-- PWA / iOS -->
@@ -82,6 +82,16 @@
     }
 
     /* ── Main state ── */
+    .uv-headline {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.25;
+      color: var(--accent);
+      transition: color 0.5s ease;
+      white-space: pre-line;
+      margin-bottom: 24px;
+    }
+
     .uv-number {
       font-size: 112px;
       font-weight: 700;
@@ -206,6 +216,37 @@
 
     .btn-save:active { transform: scale(0.96); }
 
+    /* ── Autocomplete dropdown ── */
+    .suggestions {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: #fff;
+      border: 1.5px solid #eee;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      z-index: 100;
+    }
+
+    .suggestion-item {
+      padding: 12px 16px;
+      font-size: 15px;
+      color: #111;
+      cursor: pointer;
+      border-bottom: 1px solid #f5f5f5;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .suggestion-item:last-child { border-bottom: none; }
+    .suggestion-item:active { background: #f5f5f5; }
+
+    .suggestion-item .sub {
+      font-size: 12px;
+      color: #bbb;
+      margin-top: 2px;
+    }
+
     .notify-status {
       font-size: 12px;
       color: #aaa;
@@ -271,11 +312,11 @@
 
     // ── UV level config ──────────────────────────────────────────
     const LEVELS = [
-      { max: 2,        label: 'Низкий',        color: '#22C55E', advice: 'Живи. Сегодня солнце тебя не хочет.',                              spf: false },
-      { max: 5,        label: 'Умеренный',      color: '#EAB308', advice: 'Рак кожи с первого раза не бывает. Продолжай в том же духе.',        spf: false },
-      { max: 7,        label: 'Высокий',        color: '#F97316', advice: 'Намажься. Или не надо, меланома сама себя не вырастит.',              spf: true  },
-      { max: 10,       label: 'Очень высокий',  color: '#EF4444', advice: 'Красивый коричневый цвет. Гроб тоже будет красивый.',                 spf: true  },
-      { max: Infinity, label: 'Экстремальный',  color: '#8B5CF6', advice: 'Это уже не загар. Это заявка на биопсию. Загорай, красавчик.',        spf: true  },
+      { max: 2,        label: 'Низкий',        color: '#22C55E', headline: 'Солнце спит который час,\nкрем не нужен нам сейчас',          advice: 'Живи. Сегодня солнце тебя не хочет.',                              spf: false },
+      { max: 5,        label: 'Умеренный',      color: '#EAB308', headline: 'Солнце припекает кожу,\nты намажь хотя бы рожу',             advice: 'Рак кожи с первого раза не бывает. Продолжай в том же духе.',        spf: false },
+      { max: 7,        label: 'Высокий',        color: '#F97316', headline: 'Мажься срочно, не ленись,\nс СПФ-шкой поженись',             advice: 'Намажься. Или не надо, меланома сама себя не вырастит.',              spf: true  },
+      { max: 10,       label: 'Очень высокий',  color: '#EF4444', headline: 'Онкология — не круто.\nМазать поздно тело трупа',            advice: 'Красивый коричневый цвет. Гроб тоже будет красивый.',                 spf: true  },
+      { max: Infinity, label: 'Экстремальный',  color: '#8B5CF6', headline: 'Ты бы дома посидел —\nне поможет даже крем',                 advice: 'Это уже не загар. Это заявка на биопсию. Загорай, красавчик.',        spf: true  },
     ];
 
     function getLevel(uv) {
@@ -301,6 +342,7 @@
 
       document.getElementById('app').innerHTML = `
         <div class="fade-in">
+          <div class="uv-headline">${level.headline}</div>
           <div class="uv-number">${uvStr}</div>
           <div class="uv-unit">UV индекс</div>
 
@@ -523,18 +565,23 @@
       document.getElementById('app').innerHTML = `
         <div class="fade-in">
           <div style="font-size:28px;font-weight:700;color:#111;margin-bottom:16px;text-align:left;line-height:1.2;letter-spacing:-0.5px">Ты где вот щас?</div>
-          <div style="display:flex;gap:8px">
-            <input
-              id="city-input"
-              type="text"
-              value="${failedQuery || ''}"
-              placeholder="Любой город…"
-              style="flex:1;padding:13px 16px;border:1.5px solid ${failedQuery ? '#ef4444' : '#eee'};border-radius:14px;font-size:15px;font-family:inherit;outline:none;color:#111;background:#fff"
-              onkeydown="if(event.key==='Enter') searchCity()"
-            >
+          <div style="display:flex;gap:8px;position:relative">
+            <div style="flex:1;position:relative">
+              <input
+                id="city-input"
+                type="text"
+                value="${failedQuery || ''}"
+                placeholder="Любой город…"
+                autocomplete="off"
+                style="width:100%;padding:13px 16px;border:1.5px solid ${failedQuery ? '#ef4444' : '#eee'};border-radius:14px;font-size:15px;font-family:inherit;outline:none;color:#111;background:#fff"
+                oninput="onCityInput(this.value)"
+                onkeydown="handleCityKey(event)"
+              >
+              <div id="suggestions" class="suggestions" style="display:none"></div>
+            </div>
             <button
               onclick="searchCity()"
-              style="padding:13px 18px;background:#111;color:#fff;border:none;border-radius:14px;font-size:22px;cursor:pointer;-webkit-tap-highlight-color:transparent"
+              style="padding:13px 18px;background:#111;color:#fff;border:none;border-radius:14px;font-size:22px;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0"
             >→</button>
           </div>
           ${errorHTML}
@@ -617,6 +664,81 @@
         }
       }
       return { results: [], error: 'notfound' };
+    }
+
+    // ── Autocomplete ─────────────────────────────────────────────
+    let _suggestTimer = null;
+
+    function onCityInput(val) {
+      clearTimeout(_suggestTimer);
+      if (!val.trim()) { hideSuggestions(); return; }
+      _suggestTimer = setTimeout(() => fetchSuggestions(val.trim()), 300);
+    }
+
+    function handleCityKey(e) {
+      if (e.key === 'Enter') { hideSuggestions(); searchCity(); }
+      if (e.key === 'Escape') hideSuggestions();
+    }
+
+    function hideSuggestions() {
+      const el = document.getElementById('suggestions');
+      if (el) el.style.display = 'none';
+    }
+
+    async function fetchSuggestions(query) {
+      // 1. Preset matches
+      const q = query.toLowerCase();
+      const presets = CITIES.filter(c => c.name.toLowerCase().includes(q));
+
+      // 2. API results
+      let apiResults = [];
+      try {
+        const resolved = resolveCity(query);
+        const attempts = [resolved, transliterate(query)].filter((v,i,a) => v && a.indexOf(v)===i);
+        for (const attempt of attempts) {
+          const r = await fetchWithTimeout(
+            `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(attempt)}&count=5&language=ru&format=json`,
+            4000
+          );
+          const data = await r.json();
+          if (data.results?.length) { apiResults = data.results; break; }
+        }
+      } catch (_) {}
+
+      const box = document.getElementById('suggestions');
+      if (!box) return;
+
+      const items = [];
+
+      // Preset cities first
+      presets.forEach(c => {
+        items.push(`
+          <div class="suggestion-item" ontouchstart="" onclick="selectCity(${c.lat},${c.lon},'${c.name}');hideSuggestions()">
+            ${c.name}
+          </div>
+        `);
+      });
+
+      // API results (skip duplicates already in presets)
+      const presetNames = presets.map(c => c.name.toLowerCase());
+      apiResults.forEach(r => {
+        if (presetNames.includes(r.name?.toLowerCase())) return;
+        const label = r.name + (r.country ? ', ' + r.country : '');
+        items.push(`
+          <div class="suggestion-item" ontouchstart="" onclick="selectCityFromApi(${r.latitude},${r.longitude},'${r.name.replace(/'/g,"\\'")}');hideSuggestions()">
+            ${r.name}<div class="sub">${r.country || ''}</div>
+          </div>
+        `);
+      });
+
+      if (!items.length) { box.style.display = 'none'; return; }
+      box.innerHTML = items.join('');
+      box.style.display = 'block';
+    }
+
+    async function selectCityFromApi(lat, lon, name) {
+      document.getElementById('city-input').value = name;
+      selectCity(lat, lon, name);
     }
 
     async function searchCity() {
