@@ -52,3 +52,18 @@ self.addEventListener('message', e => {
     });
   }
 });
+
+// Server push — background notification
+self.addEventListener('push', e => {
+  const data = e.data?.json() || {};
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'UV Guard', {
+      body: data.body || '',
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      vibrate: [100, 50, 100],
+      tag: 'uv-push',
+      renotify: true,
+    })
+  );
+});
