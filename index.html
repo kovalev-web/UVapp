@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>UV Guard</title>
+
+  <!-- PWA / iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="UV Guard">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ffffff" id="theme-meta">
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --accent: #F97316;
+      --bg: #ffffff;
+    }
+
+    html, body {
+      height: 100%;
+      height: -webkit-fill-available;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+      background: var(--bg);
+      color: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      padding: env(safe-area-inset-top, 40px) 32px env(safe-area-inset-bottom, 40px);
+      transition: background 0.6s ease;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 340px;
+      text-align: center;
+    }
+
+    /* city picker scroll */
+    .app .fade-in {
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .app .fade-in::-webkit-scrollbar { display: none; }
+
+    /* ── Loading state ── */
+    .state-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #eee;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .state-loading p {
+      font-size: 15px;
+      color: #aaa;
+      font-weight: 400;
+    }
+
+    /* ── Main state ── */
+    .uv-number {
+      font-size: 112px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -4px;
+      color: var(--accent);
+      transition: color 0.5s ease;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .uv-unit {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #c0c0c0;
+      margin-top: 6px;
+    }
+
+    .uv-level {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-top: 28px;
+      transition: color 0.5s ease;
+    }
+
+    .uv-advice {
+      font-size: 16px;
+      font-weight: 400;
+      color: #555;
+      margin-top: 10px;
+      line-height: 1.55;
+    }
+
+    .divider {
+      width: 32px;
+      height: 2px;
+      background: #f0f0f0;
+      border-radius: 1px;
+      margin: 28px auto;
+    }
+
+    .location {
+      font-size: 13px;
+      color: #c0c0c0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 24px;
+      border: none;
+      border-radius: 100px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      width: 100%;
+    }
+
+    .btn:active { transform: scale(0.96); opacity: 0.85; }
+
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+      margin-top: 32px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      margin-top: 12px;
+      transition: background 0.5s, transform 0.15s, opacity 0.15s;
+    }
+
+    /* ── Notify setup ── */
+    .notify-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      align-items: center;
+    }
+
+    .time-input {
+      flex: 1;
+      padding: 13px 16px;
+      border: 1.5px solid #eee;
+      border-radius: 14px;
+      font-size: 16px;
+      font-family: inherit;
+      text-align: center;
+      color: #111;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .time-input:focus { border-color: var(--accent); }
+
+    .btn-save {
+      flex-shrink: 0;
+      padding: 13px 20px;
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+
+    .btn-save:active { transform: scale(0.96); }
+
+    .notify-status {
+      font-size: 12px;
+      color: #aaa;
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    /* ── Error state ── */
+    .state-error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .state-error .icon { font-size: 40px; }
+    .state-error p { font-size: 15px; color: #888; line-height: 1.5; }
+
+    /* ── Time badge ── */
+    .time-badge {
+      font-size: 11px;
+      color: #d0d0d0;
+      margin-top: 6px;
+    }
+
+    /* ── Fade animation ── */
+    .fade-in {
+      animation: fadeUp 0.4s ease forwards;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Tinted background (very subtle) ── */
+    body.tinted {
+      background: #fafafa;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app" id="app">
+    <div class="state-loading fade-in">
+      <div class="spinner"></div>
+      <p>Определяем локацию…</p>
+    </div>
+  </div>
+
+  <script>
+    // ── Preset cities ────────────────────────────────────────────
+    const CITIES = [
+      { name: 'Бангкок',  lat: 13.7563,  lon: 100.5018 },
+      { name: 'Пхукет',   lat: 7.8804,   lon: 98.3923  },
+      { name: 'Паттайя',  lat: 12.9236,  lon: 100.8825 },
+      { name: 'Дананг',   lat: 16.0678,  lon: 108.2208 },
+      { name: 'Нячанг',   lat: 12.2388,  lon: 109.1967 },
+      { name: 'Бали',     lat: -8.3405,  lon: 115.0920 },
+      { name: 'Сингапур', lat: 1.3521,   lon: 103.8198 },
+      { name: 'Хошимин',  lat: 10.8231,  lon: 106.6297 },
+    ];
+
+    // ── UV level config ──────────────────────────────────────────
+    const LEVELS = [
+      { max: 2,        label: 'Низкий',        color: '#22C55E', advice: 'SPF не нужен — можно гулять спокойно',    spf: false },
+      { max: 5,        label: 'Умеренный',      color: '#EAB308', advice: 'SPF 15–30 по желанию',                   spf: false },
+      { max: 7,        label: 'Высокий',        color: '#F97316', advice: 'Нанеси SPF 30+ перед выходом',           spf: true  },
+      { max: 10,       label: 'Очень высокий',  color: '#EF4444', advice: 'Обязательно SPF 50+',                    spf: true  },
+      { max: Infinity, label: 'Экстремальный',  color: '#8B5CF6', advice: 'SPF 50+ и меньше времени на солнце',     spf: true  },
+    ];
+
+    function getLevel(uv) {
+      return LEVELS.find(l => uv <= l.max);
+    }
+
+    function setAccent(color) {
+      document.documentElement.style.setProperty('--accent', color);
+      document.getElementById('theme-meta').content = color;
+      document.body.classList.add('tinted');
+    }
+
+    // ── State ────────────────────────────────────────────────────
+    let swReg = null;
+
+    // ── Render ───────────────────────────────────────────────────
+    function renderMain(uv, lat, lon, cityOverride) {
+      const level = getLevel(uv);
+      setAccent(level.color);
+
+      const saved = localStorage.getItem('notifyTime');
+      const uvStr = Number.isInteger(uv) ? uv.toString() : uv.toFixed(1);
+
+      document.getElementById('app').innerHTML = `
+        <div class="fade-in">
+          <div class="uv-number">${uvStr}</div>
+          <div class="uv-unit">UV индекс</div>
+
+          <div class="uv-level">${level.label}</div>
+          <div class="uv-advice">${level.advice}</div>
+
+          <div class="divider"></div>
+
+          <div class="location" id="loc">
+            <span>📍</span><span id="loc-text">…</span>
+          </div>
+          <div class="time-badge" id="time-badge"></div>
+
+          <div style="display:flex;gap:8px;margin-top:32px">
+            <button class="btn btn-secondary" style="margin-top:0;flex:1" onclick="refresh()">↻ Обновить</button>
+            <button class="btn btn-secondary" style="margin-top:0;flex:1" onclick="renderManualInput()">📍 Город</button>
+          </div>
+
+          <button class="btn btn-primary" id="notify-btn" onclick="toggleNotify()">
+            ${saved ? '🔔 Напоминание в ' + saved : '🔔 Напоминать каждый день'}
+          </button>
+
+          <div id="notify-setup" style="display:none;margin-top:4px">
+            <div class="notify-row">
+              <input class="time-input" type="time" id="notify-time" value="${saved || '09:00'}">
+              <button class="btn-save" onclick="saveNotify()">OK</button>
+            </div>
+            <div class="notify-status" id="notify-hint">Уведомление придёт в выбранное время</div>
+          </div>
+        </div>
+      `;
+
+      // Update time badge
+      const d = new Date();
+      document.getElementById('time-badge').textContent =
+        'Обновлено в ' + d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+
+      // City name: use override or fetch async
+      if (cityOverride) {
+        const el = document.getElementById('loc-text');
+        if (el) el.textContent = cityOverride;
+      } else {
+        fetchCity(lat, lon);
+      }
+
+      // Reschedule if was set
+      if (saved) reschedule(saved, uv, level);
+    }
+
+    function renderError(msg) {
+      document.getElementById('app').innerHTML = `
+        <div class="state-error fade-in">
+          <div class="icon">🌥</div>
+          <p>${msg}</p>
+          <button class="btn btn-secondary" style="margin-top:16px" onclick="refresh()">↻ Попробовать снова</button>
+        </div>
+      `;
+    }
+
+    // ── Get coordinates: GPS → IP → manual ──────────────────────
+    async function getCoords() {
+      // 1. Try native geolocation
+      try {
+        const pos = await new Promise((ok, fail) =>
+          navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 8000, enableHighAccuracy: false })
+        );
+        return { lat: pos.coords.latitude, lon: pos.coords.longitude, source: 'gps' };
+      } catch (_) {}
+
+      // 2. Fallback: IP-based location
+      try {
+        const r = await fetchWithTimeout('https://freeipapi.com/api/json', 5000);
+        if (r.ok) {
+          const d = await r.json();
+          if (d.latitude && d.longitude) {
+            return { lat: d.latitude, lon: d.longitude, source: 'ip', city: d.cityName };
+          }
+        }
+      } catch (_) {}
+
+      // 3. Second IP fallback
+      try {
+        const r = await fetchWithTimeout('https://ipapi.co/json/', 5000);
+        if (r.ok) {
+          const d = await r.json();
+          if (d.latitude && d.longitude) {
+            return { lat: d.latitude, lon: d.longitude, source: 'ip', city: d.city };
+          }
+        }
+      } catch (_) {}
+
+      return null;
+    }
+
+    // ── Load UV data ─────────────────────────────────────────────
+    async function refresh() {
+      document.getElementById('app').innerHTML = `
+        <div class="state-loading fade-in">
+          <div class="spinner"></div>
+          <p>Определяем местоположение…</p>
+        </div>
+      `;
+
+      // Check cache first (< 30 min old)
+      const cache = JSON.parse(localStorage.getItem('uvCache') || 'null');
+      if (cache && Date.now() - cache.ts < 1_800_000) {
+        renderMain(cache.uv, cache.lat, cache.lon);
+        const badge = document.getElementById('time-badge');
+        if (badge) badge.textContent += ' (кэш)';
+        return;
+      }
+
+      const coords = await getCoords();
+
+      if (!coords) {
+        renderManualInput();
+        return;
+      }
+
+      try {
+        const r = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=uv_index&timezone=auto`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (!r.ok) throw new Error('API error');
+        const data = await r.json();
+        const uv = data.current?.uv_index ?? 0;
+
+        localStorage.setItem('uvCache', JSON.stringify({ uv, lat: coords.lat, lon: coords.lon, ts: Date.now() }));
+        renderMain(uv, coords.lat, coords.lon, coords.source === 'ip' ? coords.city : null);
+
+      } catch (_) {
+        if (cache) {
+          renderMain(cache.uv, cache.lat, cache.lon);
+          const badge = document.getElementById('time-badge');
+          if (badge) badge.textContent += ' (кэш)';
+        } else {
+          renderError('Не удалось загрузить UV данные.<br>Проверь интернет и попробуй снова.');
+        }
+      }
+    }
+
+    // ── Select preset city directly ──────────────────────────────
+    async function selectCity(lat, lon, name) {
+      document.getElementById('app').innerHTML = `
+        <div class="state-loading fade-in">
+          <div class="spinner"></div>
+          <p>${name}…</p>
+        </div>
+      `;
+      try {
+        const r = await fetchWithTimeout(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=uv_index&timezone=auto`,
+          10000
+        );
+        const data = await r.json();
+        const uv = data.current?.uv_index ?? 0;
+        localStorage.setItem('uvCache', JSON.stringify({ uv, lat, lon, ts: Date.now() }));
+        renderMain(uv, lat, lon, name);
+      } catch (_) {
+        renderError('Нет соединения.<br>Проверь интернет и попробуй снова.');
+      }
+    }
+
+    // ── Manual city search ───────────────────────────────────────
+    function renderManualInput(failedQuery) {
+      const chipsHTML = CITIES.map(c => `
+        <button
+          onclick="selectCity(${c.lat}, ${c.lon}, '${c.name}')"
+          style="padding:9px 16px;background:#f5f5f5;border:none;border-radius:100px;font-size:15px;font-weight:500;color:#333;cursor:pointer;-webkit-tap-highlight-color:transparent"
+          onmousedown="this.style.background='#e8e8e8'" onmouseup="this.style.background='#f5f5f5'"
+        >${c.name}</button>
+      `).join('');
+
+      const errorHTML = failedQuery
+        ? `<div style="font-size:13px;color:#ef4444;margin-top:8px;line-height:1.4">Не нашли «${failedQuery}» — попробуй по-английски</div>`
+        : '';
+
+      document.getElementById('app').innerHTML = `
+        <div class="fade-in">
+          <div style="display:flex;gap:8px">
+            <input
+              id="city-input"
+              type="text"
+              value="${failedQuery || ''}"
+              placeholder="Любой город…"
+              style="flex:1;padding:13px 16px;border:1.5px solid ${failedQuery ? '#ef4444' : '#eee'};border-radius:14px;font-size:15px;font-family:inherit;outline:none;color:#111;background:#fff"
+              onkeydown="if(event.key==='Enter') searchCity()"
+            >
+            <button
+              onclick="searchCity()"
+              style="padding:13px 18px;background:#111;color:#fff;border:none;border-radius:14px;font-size:22px;cursor:pointer;-webkit-tap-highlight-color:transparent"
+            >→</button>
+          </div>
+          ${errorHTML}
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:20px">
+            ${chipsHTML}
+          </div>
+        </div>
+      `;
+
+      const inp = document.getElementById('city-input');
+      if (inp) { inp.focus(); inp.select(); }
+    }
+
+    // ── Transliteration: Russian → Latin ────────────────────────
+    function transliterate(text) {
+      const map = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh',
+        'з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
+        'п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts',
+        'ч':'ch','ш':'sh','щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'E','Ж':'Zh',
+        'З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O',
+        'П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'Kh','Ц':'Ts',
+        'Ч':'Ch','Ш':'Sh','Щ':'Shch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya',
+      };
+      return text.split('').map(c => map[c] ?? c).join('');
+    }
+
+    // ── Timeout helper (instead of AbortSignal.timeout for compat) ─
+    function fetchWithTimeout(url, ms) {
+      const ctrl = new AbortController();
+      const id = setTimeout(() => ctrl.abort(), ms);
+      return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(id));
+    }
+
+    // ── Known Russian → English city names ──────────────────────
+    const CITY_DICT = {
+      'нью-йорк':'New York','ньюйорк':'New York','нью йорк':'New York',
+      'лондон':'London','париж':'Paris','берлин':'Berlin','рим':'Rome',
+      'токио':'Tokyo','пекин':'Beijing','шанхай':'Shanghai',
+      'дубай':'Dubai','абу-даби':'Abu Dhabi','абудаби':'Abu Dhabi',
+      'барселона':'Barcelona','мадрид':'Madrid','амстердам':'Amsterdam',
+      'прага':'Prague','вена':'Vienna','варшава':'Warsaw',
+      'стамбул':'Istanbul','анталья':'Antalya','анталия':'Antalya',
+      'москва':'Moscow','питер':'Saint Petersburg','санкт-петербург':'Saint Petersburg',
+      'сидней':'Sydney','мельбурн':'Melbourne','торонто':'Toronto',
+      'лос-анджелес':'Los Angeles','лосанджелес':'Los Angeles','лос анджелес':'Los Angeles',
+      'чикаго':'Chicago','майами':'Miami','лас-вегас':'Las Vegas','лас вегас':'Las Vegas',
+      'мехико':'Mexico City','буэнос-айрес':'Buenos Aires',
+      'каир':'Cairo','найроби':'Nairobi','йоханнесбург':'Johannesburg',
+      'мумбаи':'Mumbai','дели':'Delhi','бангалор':'Bangalore',
+      'сеул':'Seoul','тайбэй':'Taipei','гонконг':'Hong Kong','гон конг':'Hong Kong',
+    };
+
+    function resolveCity(input) {
+      const key = input.toLowerCase().trim();
+      return CITY_DICT[key] || input;
+    }
+
+    // ── Geocode via Open-Meteo ────────────────────────────────────
+    async function geocode(query) {
+      const resolved = resolveCity(query);
+      const queries = [resolved, transliterate(query)]
+        .filter((v, i, a) => v && a.indexOf(v) === i);
+
+      for (const q of queries) {
+        try {
+          const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=ru&format=json`;
+          const r = await fetchWithTimeout(url, 8000);
+          if (!r.ok) continue;
+          const data = await r.json();
+          if (data.results?.length) return { results: data.results, error: null };
+        } catch (e) {
+          return { results: [], error: 'network' };
+        }
+      }
+      return { results: [], error: 'notfound' };
+    }
+
+    async function searchCity() {
+      const input = document.getElementById('city-input');
+      const city = input?.value?.trim();
+      if (!city) return;
+
+      document.getElementById('app').innerHTML = `
+        <div class="state-loading fade-in">
+          <div class="spinner"></div>
+          <p>Ищем…</p>
+        </div>
+      `;
+
+      const { results, error } = await geocode(city);
+
+      if (error === 'network') {
+        renderError('Нет соединения с интернетом.<br>Проверь сеть и попробуй снова.');
+        return;
+      }
+
+      if (!results.length) {
+        renderManualInput(city);
+        return;
+      }
+
+      try {
+        const best = results.find(r => r.population > 0) || results[0];
+        const lat = best.latitude;
+        const lon = best.longitude;
+        const cityName = best.name + (best.country ? ', ' + best.country : '');
+
+        const r = await fetchWithTimeout(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=uv_index&timezone=auto`,
+          10000
+        );
+        const data = await r.json();
+        const uv = data.current?.uv_index ?? 0;
+
+        localStorage.setItem('uvCache', JSON.stringify({ uv, lat, lon, ts: Date.now() }));
+        renderMain(uv, lat, lon, cityName);
+
+      } catch (_) {
+        renderError('Не удалось загрузить UV данные.<br>Проверь интернет и попробуй снова.');
+      }
+    }
+
+    // ── City name from coords (reverse geocode via Open-Meteo) ───
+    async function fetchCity(lat, lon) {
+      try {
+        // Use nearby search: get city at exact coords
+        const r = await fetchWithTimeout(
+          `https://geocoding-api.open-meteo.com/v1/search?name=&latitude=${lat}&longitude=${lon}&count=1&language=ru&format=json`,
+          5000
+        );
+        // Open-Meteo geocoding doesn't support reverse — use coordinates label
+        const el = document.getElementById('loc-text');
+        if (el) el.textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
+      } catch (_) {}
+    }
+
+    // ── Notifications ────────────────────────────────────────────
+    function toggleNotify() {
+      const setup = document.getElementById('notify-setup');
+      if (!setup) return;
+      const visible = setup.style.display !== 'none';
+      setup.style.display = visible ? 'none' : 'block';
+    }
+
+    async function saveNotify() {
+      if (!('Notification' in window)) {
+        alert('Ваш браузер не поддерживает уведомления.\nДобавьте приложение на экран домой (iOS 16.4+).');
+        return;
+      }
+
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        alert('Разрешите уведомления:\nНастройки → Safari → Уведомления → UV Guard');
+        return;
+      }
+
+      const time = document.getElementById('notify-time').value;
+      localStorage.setItem('notifyTime', time);
+
+      const btn = document.getElementById('notify-btn');
+      if (btn) btn.textContent = '🔔 Напоминание в ' + time;
+
+      const hint = document.getElementById('notify-hint');
+      if (hint) hint.textContent = '✓ Сохранено';
+
+      document.getElementById('notify-setup').style.display = 'none';
+
+      // Get current UV for notification
+      const cache = JSON.parse(localStorage.getItem('uvCache') || 'null');
+      if (cache) {
+        const level = getLevel(cache.uv);
+        reschedule(time, cache.uv, level);
+      }
+    }
+
+    function reschedule(timeStr, uv, level) {
+      const [h, m] = timeStr.split(':').map(Number);
+      const now = new Date();
+      const next = new Date();
+      next.setHours(h, m, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+
+      const delay = next - now;
+
+      clearTimeout(window._notifyTimer);
+      window._notifyTimer = setTimeout(async () => {
+        try {
+          // Re-fetch UV before notifying
+          const reg = swReg || (await navigator.serviceWorker.ready);
+          const cache = JSON.parse(localStorage.getItem('uvCache') || 'null');
+          const currentUv = cache ? cache.uv : uv;
+          const currentLevel = getLevel(currentUv);
+          const body = currentLevel.spf
+            ? `UV ${Number.isInteger(currentUv) ? currentUv : currentUv.toFixed(1)} — ${currentLevel.advice}`
+            : `UV ${Number.isInteger(currentUv) ? currentUv : currentUv.toFixed(1)} — ${currentLevel.advice}`;
+
+          if (reg && reg.active) {
+            reg.active.postMessage({ type: 'NOTIFY', body });
+          } else {
+            new Notification('UV Guard', { body, icon: '/icon.svg' });
+          }
+        } catch (_) {}
+
+        reschedule(timeStr, uv, level);
+      }, delay);
+    }
+
+    // ── Service Worker ───────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => { swReg = reg; })
+        .catch(console.warn);
+    }
+
+    // ── Boot ─────────────────────────────────────────────────────
+    refresh();
+  </script>
+</body>
+</html>
