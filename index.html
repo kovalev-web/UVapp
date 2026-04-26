@@ -316,20 +316,12 @@
 
           <div style="display:flex;gap:8px;margin-top:32px">
             <button class="btn btn-secondary" style="margin-top:0;flex:1" onclick="refresh()">↻ Обновить</button>
-            <button class="btn btn-secondary" style="margin-top:0;flex:1" onclick="renderManualInput()">📍 Город</button>
+            <button class="btn btn-secondary" style="margin-top:0;flex:1" onclick="renderManualInput()">🗺 Город</button>
           </div>
 
-          <button class="btn btn-primary" id="notify-btn" onclick="toggleNotify()">
-            ${saved ? '🔔 Напоминание в ' + saved : '🔔 Напоминать каждый день'}
+          <button class="btn btn-primary" id="notify-btn" onclick="toggleMonitoring()">
+            ${localStorage.getItem('monitoring') === 'on' ? '🔔 Уведомления вкл' : '🔔 Уведомлять об изменениях'}
           </button>
-
-          <div id="notify-setup" style="display:none;margin-top:4px">
-            <div class="notify-row">
-              <input class="time-input" type="time" id="notify-time" value="${saved || '09:00'}">
-              <button class="btn-save" onclick="saveNotify()">OK</button>
-            </div>
-            <div class="notify-status" id="notify-hint">Уведомление придёт в выбранное время</div>
-          </div>
         </div>
       `;
 
@@ -346,8 +338,8 @@
         fetchCity(lat, lon);
       }
 
-      // Reschedule if was set
-      if (saved) reschedule(saved, uv, level);
+      // Resume monitoring if was enabled
+      if (localStorage.getItem('monitoring') === 'on') startMonitoring();
     }
 
     function renderError(msg) {
@@ -393,6 +385,43 @@
       } catch (_) {}
 
       return null;
+    }
+
+    // ── Use GPS location explicitly ──────────────────────────────
+    async function useMyLocation() {
+      document.getElementById('app').innerHTML = `
+        <div class="state-loading fade-in">
+          <div class="spinner"></div>
+          <p>Определяем локацию…</p>
+        </div>
+      `;
+      try {
+        const pos = await new Promise((ok, fail) =>
+          navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 12000, enableHighAccuracy: false })
+        );
+        const { latitude: lat, longitude: lon } = pos.coords;
+        const r = await fetchWithTimeout(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=uv_index&timezone=auto`,
+          10000
+        );
+        const data = await r.json();
+        const uv = data.current?.uv_index ?? 0;
+        localStorage.setItem('uvCache', JSON.stringify({ uv, lat, lon, ts: Date.now() }));
+        renderMain(uv, lat, lon);
+      } catch (err) {
+        if (err.code === 1) {
+          renderManualInput();
+          setTimeout(() => {
+            const btn = document.querySelector('[onclick="useMyLocation()"]');
+            if (btn) {
+              btn.textContent = '⚠️ Геолокация запрещена — разреши в настройках';
+              btn.style.color = '#ef4444';
+            }
+          }, 50);
+        } else {
+          renderError('Не удалось получить локацию.<br>Попробуй снова или выбери город.');
+        }
+      }
     }
 
     // ── Load UV data ─────────────────────────────────────────────
@@ -481,6 +510,7 @@
 
       document.getElementById('app').innerHTML = `
         <div class="fade-in">
+          <div style="font-size:28px;font-weight:700;color:#111;margin-bottom:16px;text-align:left;line-height:1.2;letter-spacing:-0.5px">Ты где вот щас?</div>
           <div style="display:flex;gap:8px">
             <input
               id="city-input"
@@ -496,6 +526,11 @@
             >→</button>
           </div>
           ${errorHTML}
+          <button
+            onclick="useMyLocation()"
+            style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;background:#f5f5f5;border:none;border-radius:14px;font-size:15px;font-weight:500;color:#333;cursor:pointer;margin-top:8px;-webkit-tap-highlight-color:transparent"
+            onmousedown="this.style.background='#e8e8e8'" onmouseup="this.style.background='#f5f5f5'"
+          >📍 Моя геолокация</button>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:20px">
             ${chipsHTML}
           </div>
@@ -632,74 +667,92 @@
     }
 
     // ── Notifications ────────────────────────────────────────────
-    function toggleNotify() {
-      const setup = document.getElementById('notify-setup');
-      if (!setup) return;
-      const visible = setup.style.display !== 'none';
-      setup.style.display = visible ? 'none' : 'block';
+    // ── Threshold-based notifications ────────────────────────────
+    // SPF needed when UV >= 3 (moderate+)
+    function spfNeeded(uv) { return uv >= 3; }
+
+    async function sendNotif(body) {
+      try {
+        const reg = swReg || (await navigator.serviceWorker.ready);
+        if (reg?.active) {
+          reg.active.postMessage({ type: 'NOTIFY', body });
+        } else {
+          new Notification('UV Guard', { body, icon: '/icon.svg' });
+        }
+      } catch (_) {}
     }
 
-    async function saveNotify() {
-      if (!('Notification' in window)) {
-        alert('Ваш браузер не поддерживает уведомления.\nДобавьте приложение на экран домой (iOS 16.4+).');
+    async function checkUVChange() {
+      const cache = JSON.parse(localStorage.getItem('uvCache') || 'null');
+      if (!cache) return;
+
+      try {
+        const r = await fetchWithTimeout(
+          `https://api.open-meteo.com/v1/forecast?latitude=${cache.lat}&longitude=${cache.lon}&current=uv_index&timezone=auto`,
+          10000
+        );
+        const data = await r.json();
+        const newUv = data.current?.uv_index ?? 0;
+        const prevSpf = localStorage.getItem('lastSpfState');
+        const nowSpf = spfNeeded(newUv);
+
+        // Save new data
+        localStorage.setItem('uvCache', JSON.stringify({ ...cache, uv: newUv, ts: Date.now() }));
+        localStorage.setItem('lastSpfState', nowSpf ? 'on' : 'off');
+
+        // Notify only if state flipped
+        if (prevSpf === null) return; // first run, no prev state
+        const wasSpf = prevSpf === 'on';
+        if (nowSpf && !wasSpf) {
+          const level = getLevel(newUv);
+          sendNotif(`UV ${newUv.toFixed(1)} — ${level.advice} ☀️`);
+        } else if (!nowSpf && wasSpf) {
+          sendNotif(`UV ${newUv.toFixed(1)} — SPF не нужен, можно расслабиться 😎`);
+        }
+      } catch (_) {}
+    }
+
+    async function toggleMonitoring() {
+      const isOn = localStorage.getItem('monitoring') === 'on';
+
+      if (isOn) {
+        stopMonitoring();
+        localStorage.setItem('monitoring', 'off');
+        const btn = document.getElementById('notify-btn');
+        if (btn) btn.textContent = '🔔 Уведомлять об изменениях';
         return;
       }
 
+      // Request permission first
+      if (!('Notification' in window)) {
+        alert('Уведомления недоступны.\nДобавьте приложение на экран домой (iOS 16.4+).');
+        return;
+      }
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') {
         alert('Разрешите уведомления:\nНастройки → Safari → Уведомления → UV Guard');
         return;
       }
 
-      const time = document.getElementById('notify-time').value;
-      localStorage.setItem('notifyTime', time);
+      localStorage.setItem('monitoring', 'on');
+      // Seed the current state so first flip is detected
+      const cache = JSON.parse(localStorage.getItem('uvCache') || 'null');
+      if (cache) localStorage.setItem('lastSpfState', spfNeeded(cache.uv) ? 'on' : 'off');
 
       const btn = document.getElementById('notify-btn');
-      if (btn) btn.textContent = '🔔 Напоминание в ' + time;
+      if (btn) btn.textContent = '🔔 Уведомления вкл';
 
-      const hint = document.getElementById('notify-hint');
-      if (hint) hint.textContent = '✓ Сохранено';
-
-      document.getElementById('notify-setup').style.display = 'none';
-
-      // Get current UV for notification
-      const cache = JSON.parse(localStorage.getItem('uvCache') || 'null');
-      if (cache) {
-        const level = getLevel(cache.uv);
-        reschedule(time, cache.uv, level);
-      }
+      startMonitoring();
     }
 
-    function reschedule(timeStr, uv, level) {
-      const [h, m] = timeStr.split(':').map(Number);
-      const now = new Date();
-      const next = new Date();
-      next.setHours(h, m, 0, 0);
-      if (next <= now) next.setDate(next.getDate() + 1);
+    function startMonitoring() {
+      stopMonitoring();
+      // Check every 30 minutes while app is open
+      window._monitorTimer = setInterval(checkUVChange, 30 * 60 * 1000);
+    }
 
-      const delay = next - now;
-
-      clearTimeout(window._notifyTimer);
-      window._notifyTimer = setTimeout(async () => {
-        try {
-          // Re-fetch UV before notifying
-          const reg = swReg || (await navigator.serviceWorker.ready);
-          const cache = JSON.parse(localStorage.getItem('uvCache') || 'null');
-          const currentUv = cache ? cache.uv : uv;
-          const currentLevel = getLevel(currentUv);
-          const body = currentLevel.spf
-            ? `UV ${Number.isInteger(currentUv) ? currentUv : currentUv.toFixed(1)} — ${currentLevel.advice}`
-            : `UV ${Number.isInteger(currentUv) ? currentUv : currentUv.toFixed(1)} — ${currentLevel.advice}`;
-
-          if (reg && reg.active) {
-            reg.active.postMessage({ type: 'NOTIFY', body });
-          } else {
-            new Notification('UV Guard', { body, icon: '/icon.svg' });
-          }
-        } catch (_) {}
-
-        reschedule(timeStr, uv, level);
-      }, delay);
+    function stopMonitoring() {
+      clearInterval(window._monitorTimer);
     }
 
     // ── Service Worker ───────────────────────────────────────────
