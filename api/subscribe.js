@@ -10,12 +10,15 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { subscription, lat, lon, timezone } = req.body;
+  const { subscription, lat, lon, timezone, interval } = req.body;
   if (!subscription) return res.status(400).json({ error: 'No subscription' });
 
   await redis.set('push_subscription', JSON.stringify(subscription));
   if (lat && lon) await redis.set('push_coords', JSON.stringify({ lat, lon }));
   if (timezone) await redis.set('push_timezone', timezone);
+  if (interval) await redis.set('push_interval', String(interval));
+  // Reset last sent so new interval takes effect immediately
+  await redis.del('push_last_sent');
 
   res.status(200).json({ ok: true });
 }

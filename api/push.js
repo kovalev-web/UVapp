@@ -15,47 +15,54 @@ function getLevel(uv) {
   return LEVELS.find(l => uv <= l.max);
 }
 
-// Notify times in local HH:MM
-const NOTIFY_TIMES = ['10:00', '12:00', '14:30', '23:30', '23:35'];
-
-function isNotifyTime(timezone) {
+// Is current local time between 9:00 and 17:00?
+function isInDaytime(timezone) {
   try {
     const now = new Date();
-    const localTime = now.toLocaleTimeString('en-GB', {
-      timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-    }); // → "10:00"
-    return NOTIFY_TIMES.includes(localTime);
+    const hour = parseInt(
+      now.toLocaleTimeString('en-GB', { timeZone: timezone, hour: '2-digit' }),
+      10
+    );
+    return hour >= 9 && hour < 17;
   } catch (_) {
-    return false;
+    return true; // fallback: always send
   }
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'GET' && req.method !== 'POST') {
-    return res.status(405).end();
-  }
+// Has enough time passed since last notification?
+function isIntervalReached(lastSentMs, intervalMinutes) {
+  if (!lastSentMs) return true;
+  const elapsed = Date.now() - Number(lastSentMs);
+  return elapsed >= intervalMinutes * 60 * 1000;
+}
 
-  // Secret check
+export default async function handler(req, res) {
+  if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end();
+
   const secret = req.headers['x-cron-secret'] || req.query.secret;
   if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    const subRaw      = await redis.get('push_subscription');
-    const coordsRaw   = await redis.get('push_coords');
-    const timezone    = await redis.get('push_timezone') || 'UTC';
+    const subRaw    = await redis.get('push_subscription');
+    const coordsRaw = await redis.get('push_coords');
+    const timezone  = (await redis.get('push_timezone')) || 'UTC';
+    const interval  = parseInt(await redis.get('push_interval') || '60', 10);
+    const lastSent  = await redis.get('push_last_sent');
 
     if (!subRaw || !coordsRaw) {
       return res.status(404).json({ error: 'No subscription or coords stored' });
     }
 
-    // Check if it's the right local time (cron runs every 30 min)
-    // Skip unless forced with ?force=1
-    if (!req.query.force && !isNotifyTime(timezone)) {
-      return res.status(200).json({ ok: true, skipped: true, timezone, msg: 'Not a notify time' });
+    // Skip if outside 9:00–17:00 local time (unless forced)
+    if (!req.query.force && !isInDaytime(timezone)) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'outside daytime' });
+    }
+
+    // Skip if not enough time passed since last notification
+    if (!req.query.force && !isIntervalReached(lastSent, interval)) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'interval not reached' });
     }
 
     const subscription = typeof subRaw === 'string' ? JSON.parse(subRaw) : subRaw;
@@ -76,13 +83,12 @@ export default async function handler(req, res) {
       process.env.VAPID_PUBLIC_KEY,
       process.env.VAPID_PRIVATE_KEY
     );
+    await webpush.sendNotification(subscription, JSON.stringify({ title: 'UV Guard', body }));
 
-    await webpush.sendNotification(
-      subscription,
-      JSON.stringify({ title: 'UV Guard', body })
-    );
+    // Save last sent timestamp
+    await redis.set('push_last_sent', Date.now().toString());
 
-    res.status(200).json({ ok: true, uv, body, timezone });
+    res.status(200).json({ ok: true, uv, body });
 
   } catch (err) {
     console.error('Push error:', err.message);

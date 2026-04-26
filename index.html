@@ -319,9 +319,21 @@
             <button class="btn btn-secondary" style="margin-top:0;flex:1" onclick="renderManualInput()">🗺 Город</button>
           </div>
 
-          <button class="btn btn-primary" id="notify-btn" onclick="toggleMonitoring()">
-            ${localStorage.getItem('monitoring') === 'on' ? '🔔 Уведомления вкл' : '🔔 Уведомлять в 10:00, 12:00 и 14:30'}
-          </button>
+          <div style="margin-top:20px;text-align:left">
+            <div style="font-size:12px;font-weight:500;color:#aaa;letter-spacing:0.5px;margin-bottom:8px">УВЕДОМЛЯТЬ КАЖДЫЕ</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px" id="freq-btns">
+              ${['10 мин|10','30 мин|30','1 час|60','2 часа|120','4 часа|240','Выкл|off'].map(s => {
+                const [label, val] = s.split('|');
+                const active = localStorage.getItem('notifyInterval') === val;
+                return `<button
+                  onclick="setNotifyInterval('${val}')"
+                  style="padding:8px 14px;border:none;border-radius:100px;font-size:13px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent;background:${active ? 'var(--accent)' : '#f0f0f0'};color:${active ? '#fff' : '#444'}"
+                  data-interval="${val}"
+                >${label}</button>`;
+              }).join('')}
+            </div>
+            <div style="font-size:11px;color:#ccc;margin-top:6px">с 9:00 до 17:00 по местному времени</div>
+          </div>
         </div>
       `;
 
@@ -674,19 +686,16 @@
       return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
     }
 
-    async function toggleMonitoring() {
-      const isOn = localStorage.getItem('monitoring') === 'on';
-      const btn = document.getElementById('notify-btn');
-
-      if (isOn) {
-        // Unsubscribe
+    async function setNotifyInterval(val) {
+      // Turn off
+      if (val === 'off') {
         try {
           const reg = await navigator.serviceWorker.ready;
           const sub = await reg.pushManager.getSubscription();
           if (sub) await sub.unsubscribe();
         } catch (_) {}
-        localStorage.setItem('monitoring', 'off');
-        if (btn) btn.textContent = '🔔 Уведомлять в 10:00, 12:00 и 14:30';
+        localStorage.setItem('notifyInterval', 'off');
+        updateFreqButtons('off');
         return;
       }
 
@@ -701,37 +710,46 @@
         return;
       }
 
-      if (btn) btn.textContent = '⏳ Подключаем…';
-
       try {
-        // Get VAPID public key from server
         const keyRes = await fetchWithTimeout('/api/vapid-key', 5000);
         const { publicKey } = await keyRes.json();
         if (!publicKey) throw new Error('No VAPID key');
 
-        // Subscribe to Web Push
         const reg = await navigator.serviceWorker.ready;
         const subscription = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(publicKey),
         });
 
-        // Send subscription + current coords + timezone to server
         const cache = JSON.parse(localStorage.getItem('uvCache') || '{}');
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
         await fetch('/api/subscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subscription, lat: cache.lat, lon: cache.lon, timezone }),
+          body: JSON.stringify({
+            subscription,
+            lat: cache.lat,
+            lon: cache.lon,
+            timezone,
+            interval: parseInt(val),
+          }),
         });
 
-        localStorage.setItem('monitoring', 'on');
-        if (btn) btn.textContent = '🔔 Уведомления вкл';
+        localStorage.setItem('notifyInterval', val);
+        updateFreqButtons(val);
 
-      } catch (err) {
-        if (btn) btn.textContent = '🔔 Уведомлять в 10:00, 12:00 и 14:30';
+      } catch (_) {
         alert('Не удалось подключить уведомления.\nПроверь что приложение добавлено на экран домой.');
       }
+    }
+
+    function updateFreqButtons(activeVal) {
+      document.querySelectorAll('[data-interval]').forEach(btn => {
+        const isActive = btn.dataset.interval === activeVal;
+        btn.style.background = isActive ? 'var(--accent)' : '#f0f0f0';
+        btn.style.color = isActive ? '#fff' : '#444';
+      });
     }
 
     // ── Service Worker ───────────────────────────────────────────
