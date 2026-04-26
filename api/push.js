@@ -16,7 +16,7 @@ function getLevel(uv) {
 }
 
 // Notify times in local HH:MM
-const NOTIFY_TIMES = ['10:00', '12:00', '14:30', '23:30'];
+const NOTIFY_TIMES = ['10:00', '12:00', '14:30', '23:30', '23:35'];
 
 function isNotifyTime(timezone) {
   try {
