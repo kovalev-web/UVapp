@@ -4,11 +4,11 @@ import webpush from 'web-push';
 const redis = Redis.fromEnv();
 
 const LEVELS = [
-  { max: 2,        advice: 'Живи. Сегодня солнце тебя не хочет.',                             spf: false },
-  { max: 5,        advice: 'Рак кожи с первого раза не бывает. Продолжай в том же духе.',   spf: false },
-  { max: 7,        advice: 'Намажься. Или не надо, меланома сама себя не вырастит.',         spf: true  },
-  { max: 10,       advice: 'Красивый коричневый цвет. Гроб тоже будет красивый.',            spf: true  },
-  { max: Infinity, advice: 'Это уже не загар. Это заявка на биопсию. Загорай, красавчик.',   spf: true  },
+  { max: 2,        headline: 'Солнце спит который час,\nкрем не нужен нам сейчас',      spf: false },
+  { max: 5,        headline: 'Солнце припекает кожу,\nты намажь хотя бы рожу',        spf: false },
+  { max: 7,        headline: 'Мажься срочно, не ленись,\nс СПФ-шкой поженись',       spf: true  },
+  { max: 10,       headline: 'Онкология — не круто.\nМазать поздно тело трупа',       spf: true  },
+  { max: Infinity, headline: 'Ты бы дома посидел —\nне поможет даже крем',             spf: true  },
 ];
 
 function getLevel(uv) {
@@ -65,7 +65,7 @@ export default async function handler(req, res) {
     const data = await r.json();
     const uv = data.current?.uv_index ?? 0;
     const level = getLevel(uv);
-    const body = `UV ${uv.toFixed(1)} — ${level.advice}`;
+    const body = `UV ${uv.toFixed(1)} — ${level.headline.replace('\n', ' ')}`;
 
     // Send push
     webpush.setVapidDetails(
